@@ -167,10 +167,21 @@ def plot_if_symbolic(sym_val):
             st.warning(f"Could not plot: {e}")
 
 # ---------- Display / Input ----------
-st.text_input("Expression", key="display", placeholder="Type or use the buttons… e.g., sin(30)+sqrt(2)^2, 5!, log10(100), x^2+2*x+1")
+# ---------- Display / Input ----------
+if "expression" not in st.session_state:
+    st.session_state.expression = ""
+
+st.text_input(
+    "Expression",
+    value=st.session_state.expression,
+    key="display",
+    placeholder="Type or use the buttons… e.g., sin(30)+sqrt(2)^2, 5!, log10(100), x^2+2*x+1"
+)
 
 # Buttons grid
-def add(txt): st.session_state.display += txt
+def add(txt):
+    st.session_state.expression += txt
+
 
 def backspace():
     st.session_state.display = st.session_state.display[:-1]
