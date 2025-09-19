@@ -40,25 +40,22 @@ def _preprocess(expr: str) -> str:
     if not expr:
         return expr
 
-    # Convert ^ to ** for exponent
-    expr = expr.replace("^", "**")
+    expr = expr.replace("^", "**")  # Convert ^ to ** for exponent
 
-    # Replace trailing % to /100 (supports 50% or (a+b)%)
-    #  e.g., "50%" -> "(50)/100", "(2*x)%" -> "((2*x))/100"
+    # Replace trailing % to /100
     expr = re.sub(r"(\))\s*%", r"\1/100", expr)
     expr = re.sub(r"(\d+(\.\d+)?)\s*%", r"(\1)/100", expr)
 
-    # Factorial: turn n! or )! into factorial(n) / factorial( ... )
-    # Handles nested parentheses: " (2+3)! " -> " factorial((2+3)) "
+    # Factorial: n! → factorial(n)
     expr = re.sub(r"(\d+|\([^\(\)]*\))\s*!",
                   lambda m: f"factorial({m.group(1)})", expr)
 
-    # Remove accidental unicode multiplication signs
+    # Remove accidental unicode multiplication/division
     expr = expr.replace("×", "*").replace("÷", "/")
 
     return expr
 
-# Degree-mode wrappers (SymPy expects radians)
+# Degree-mode wrappers
 def sind(z): return sp.sin(sp.pi*z/180)
 def cosd(z): return sp.cos(sp.pi*z/180)
 def tand(z): return sp.tan(sp.pi*z/180)
@@ -70,13 +67,11 @@ def evaluate(expr: str) -> sp.Expr | str:
     """Safely evaluate with SymPy; returns sympy object or string error."""
     if not expr:
         return ""
-    expr_raw = expr
     expr = _preprocess(expr)
 
     # Allow Ans keyword
     expr = expr.replace("Ans", f"({st.session_state.ans})")
 
-    # Allowed names and functions
     common_locals = {
         "x": x,
         "pi": sp.pi,
@@ -84,14 +79,13 @@ def evaluate(expr: str) -> sp.Expr | str:
         "sqrt": sp.sqrt,
         "abs": sp.Abs,
         "ln": sp.log,
-        "log": sp.log,     # natural log by default; user can write log10
+        "log": sp.log,
         "log10": sp.log10,
         "exp": sp.exp,
         "floor": sp.floor,
         "ceil": sp.ceiling,
         "gamma": sp.gamma,
         "factorial": sp.factorial,
-        # hyperbolics (always rad-based)
         "sinh": sp.sinh, "cosh": sp.cosh, "tanh": sp.tanh,
         "asinh": sp.asinh, "acosh": sp.acosh, "atanh": sp.atanh,
     }
@@ -111,34 +105,26 @@ def evaluate(expr: str) -> sp.Expr | str:
 
     try:
         sym = sp.sympify(expr, locals=locals_dict, convert_xor=True)
-        # Try to simplify a bit
-        sym_simpl = sp.simplify(sym)
-        return sym_simpl
+        return sp.simplify(sym)
     except Exception as e:
         return f"Error: {str(e)}"
 
 def push_history(expr: str, result_str: str):
     st.session_state.history.insert(0, {"expr": expr, "result": result_str})
-    # Keep last 50 entries
     st.session_state.history = st.session_state.history[:50]
 
 def show_result(sym_val) -> str:
-    """Return pretty string and render LaTeX."""
     if isinstance(sym_val, str):
         st.error(sym_val)
         return sym_val
-    # Numeric try
     try:
         num = sp.N(sym_val, 16)
     except Exception:
         num = sym_val
-
-    # LaTeX pretty
     st.latex(sp.latex(sp.simplify(sym_val)))
     return str(num)
 
 def plot_if_symbolic(sym_val):
-    """If expression contains x, draw a plot."""
     if isinstance(sym_val, str):
         return
     free = getattr(sym_val, "free_symbols", set())
@@ -167,30 +153,18 @@ def plot_if_symbolic(sym_val):
             st.warning(f"Could not plot: {e}")
 
 # ---------- Display / Input ----------
-# ---------- Display / Input ----------
-if "expression" not in st.session_state:
-    st.session_state.expression = ""
-
 st.text_input(
     "Expression",
-    value=st.session_state.expression,
+    value=st.session_state.display,
     key="display",
     placeholder="Type or use the buttons… e.g., sin(30)+sqrt(2)^2, 5!, log10(100), x^2+2*x+1"
 )
 
-# Buttons grid
-def add(txt):
-    st.session_state.expression += txt
-
-
-def backspace():
-    st.session_state.display = st.session_state.display[:-1]
-
-def clear_all():
-    st.session_state.display = ""
-
-def set_ans():
-    add("Ans")
+# Helpers for buttons
+def add(txt): st.session_state.display += txt
+def backspace(): st.session_state.display = st.session_state.display[:-1]
+def clear_all(): st.session_state.display = ""
+def set_ans(): add("Ans")
 
 def equals():
     expr = st.session_state.display.strip()
@@ -199,20 +173,16 @@ def equals():
     if not isinstance(res, str):
         st.session_state.ans = out
         push_history(expr, out)
+        plot_if_symbolic(res)
 
-def mem_clear():
-    st.session_state.memory = 0.0
-
-def mem_recall():
-    add(str(st.session_state.memory))
-
+def mem_clear(): st.session_state.memory = 0.0
+def mem_recall(): add(str(st.session_state.memory))
 def mem_plus():
     try:
         val = float(evaluate(st.session_state.display))
         st.session_state.memory += val
     except Exception:
         st.warning("Cannot M+ current expression.")
-
 def mem_minus():
     try:
         val = float(evaluate(st.session_state.display))
@@ -226,23 +196,17 @@ for idx, (label, fn) in enumerate([
     ("MC", mem_clear), ("MR", mem_recall), ("M+", mem_plus),
     ("M-", mem_minus), ("Ans", set_ans), ("C", clear_all)
 ]):
-    if r1[idx].button(label):
-        fn()
+    if r1[idx].button(label): fn()
 
 # Row 2: trig/log
 r2 = st.columns(7)
 for idx, token in enumerate(["sin(", "cos(", "tan(", "asin(", "acos(", "atan(", "ln("]):
-    if r2[idx].button(token):
-        add(token)
+    if r2[idx].button(token): add(token)
 
 # Row 3: more funcs
 r3 = st.columns(7)
 for idx, token in enumerate(["log10(", "sqrt(", "(", ")", "^", "!", "%"]):
-    if r3[idx].button(token):
-        if token == "!":
-            add("!")
-        else:
-            add(token)
+    if r3[idx].button(token): add(token)
 
 # Row 4-6: digits and ops
 rows = [
@@ -263,20 +227,15 @@ for row in rows:
                     st.session_state.display = st.session_state.display[1:]
                 else:
                     st.session_state.display = "-" + st.session_state.display
-            elif key == "⌫":
-                backspace()
-            else:
-                add(key)
+            elif key == "⌫": backspace()
+            else: add(key)
 
 # Equals row
 eq_col1, eq_col2 = st.columns([3, 1])
 with eq_col2:
-    if st.button("="):
-        equals()
-
-# Quick tips
+    if st.button("="): equals()
 with eq_col1:
-    st.info("Tips: `^` is power, `!` is factorial, `%` is percent, `Ans` is last result, use `x` to enable plotting.")
+    st.info("Tips: ^ is power, ! is factorial, % is percent, Ans is last result, use x to enable plotting.")
 
 # ---------- History ----------
 st.subheader("History")
@@ -290,4 +249,4 @@ else:
 
 # ---------- Footer ----------
 st.divider()
-st.caption("Made with ❤️ using Streamlit + SymPy. Degree mode maps sin/cos/tan to degree versions and inverse trig back to degrees.")
+st.caption("Made with ❤️ using Streamlit + SymPy. Degree mode maps trig functions to degrees.")
