@@ -19,9 +19,9 @@ if "ans" not in st.session_state:
 if "memory" not in st.session_state:
     st.session_state.memory = 0.0
 if "history" not in st.session_state:
-    st.session_state.history = []  # list of dicts: {"expr":..., "result":...}
+    st.session_state.history = []
 if "angle_mode" not in st.session_state:
-    st.session_state.angle_mode = "RAD"  # or "DEG"
+    st.session_state.angle_mode = "RAD"
 
 # ---------- Angle Mode ----------
 col_mode1, col_mode2 = st.columns([1, 3])
@@ -36,26 +36,17 @@ with col_mode2:
 x = symbols("x")
 
 def _preprocess(expr: str) -> str:
-    """Light preprocessing: ^ to **, percent, factorial (!) into factorial(), implicit × sign cleanup."""
     if not expr:
         return expr
-
-    expr = expr.replace("^", "**")  # Convert ^ to ** for exponent
-
-    # Replace trailing % to /100
+    expr = expr.replace("^", "**")
     expr = re.sub(r"(\))\s*%", r"\1/100", expr)
     expr = re.sub(r"(\d+(\.\d+)?)\s*%", r"(\1)/100", expr)
-
-    # Factorial: n! → factorial(n)
     expr = re.sub(r"(\d+|\([^\(\)]*\))\s*!",
                   lambda m: f"factorial({m.group(1)})", expr)
-
-    # Remove accidental unicode multiplication/division
     expr = expr.replace("×", "*").replace("÷", "/")
-
     return expr
 
-# Degree-mode wrappers
+# Degree wrappers
 def sind(z): return sp.sin(sp.pi*z/180)
 def cosd(z): return sp.cos(sp.pi*z/180)
 def tand(z): return sp.tan(sp.pi*z/180)
@@ -64,32 +55,19 @@ def acosd(z): return sp.acos(z)*180/sp.pi
 def atand(z): return sp.atan(z)*180/sp.pi
 
 def evaluate(expr: str) -> sp.Expr | str:
-    """Safely evaluate with SymPy; returns sympy object or string error."""
     if not expr:
         return ""
     expr = _preprocess(expr)
-
-    # Allow Ans keyword
     expr = expr.replace("Ans", f"({st.session_state.ans})")
-
     common_locals = {
-        "x": x,
-        "pi": sp.pi,
-        "e": sp.E,
-        "sqrt": sp.sqrt,
-        "abs": sp.Abs,
-        "ln": sp.log,
-        "log": sp.log,
-        "log10": sp.log10,
-        "exp": sp.exp,
-        "floor": sp.floor,
-        "ceil": sp.ceiling,
-        "gamma": sp.gamma,
-        "factorial": sp.factorial,
+        "x": x, "pi": sp.pi, "e": sp.E,
+        "sqrt": sp.sqrt, "abs": sp.Abs, "ln": sp.log,
+        "log": sp.log, "log10": sp.log10, "exp": sp.exp,
+        "floor": sp.floor, "ceil": sp.ceiling,
+        "gamma": sp.gamma, "factorial": sp.factorial,
         "sinh": sp.sinh, "cosh": sp.cosh, "tanh": sp.tanh,
         "asinh": sp.asinh, "acosh": sp.acosh, "atanh": sp.atanh,
     }
-
     if st.session_state.angle_mode == "DEG":
         trig_locals = {
             "sin": sind, "cos": cosd, "tan": tand,
@@ -100,9 +78,7 @@ def evaluate(expr: str) -> sp.Expr | str:
             "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
             "asin": sp.asin, "acos": sp.acos, "atan": sp.atan,
         }
-
     locals_dict = {**common_locals, **trig_locals}
-
     try:
         sym = sp.sympify(expr, locals=locals_dict, convert_xor=True)
         return sp.simplify(sym)
@@ -127,16 +103,13 @@ def show_result(sym_val) -> str:
 def plot_if_symbolic(sym_val):
     if isinstance(sym_val, str):
         return
-    free = getattr(sym_val, "free_symbols", set())
-    if x in free:
+    if x in getattr(sym_val, "free_symbols", set()):
         st.subheader("Plot")
         colA, colB = st.columns(2)
-        with colA:
-            xmin = st.number_input("x min", value=-10.0)
-        with colB:
-            xmax = st.number_input("x max", value=10.0)
+        xmin = colA.number_input("x min", value=-10.0)
+        xmax = colB.number_input("x max", value=10.0)
         if xmax <= xmin:
-            st.info("Set xmax greater than xmin to plot.")
+            st.info("Set xmax > xmin to plot.")
             return
         try:
             f = sp.lambdify(x, sym_val, "numpy")
@@ -152,18 +125,22 @@ def plot_if_symbolic(sym_val):
         except Exception as e:
             st.warning(f"Could not plot: {e}")
 
-# ---------- Display / Input ----------
-st.text_input(
+# ---------- Input box ----------
+st.session_state.display = st.text_input(
     "Expression",
     value=st.session_state.display,
-    key="display",
+    key="input_box",
     placeholder="Type or use the buttons… e.g., sin(30)+sqrt(2)^2, 5!, log10(100), x^2+2*x+1"
 )
 
-# Helpers for buttons
-def add(txt): st.session_state.display += txt
-def backspace(): st.session_state.display = st.session_state.display[:-1]
-def clear_all(): st.session_state.display = ""
+# ---------- Button helpers ----------
+def sync_display(new_val):
+    st.session_state.display = new_val
+    st.session_state.input_box = new_val  # keep input box synced
+
+def add(txt): sync_display(st.session_state.display + txt)
+def backspace(): sync_display(st.session_state.display[:-1])
+def clear_all(): sync_display("")
 def set_ans(): add("Ans")
 
 def equals():
@@ -190,7 +167,8 @@ def mem_minus():
     except Exception:
         st.warning("Cannot M- current expression.")
 
-# Row 1: Memory + utility
+# ---------- Buttons ----------
+# Row 1
 r1 = st.columns(6)
 for idx, (label, fn) in enumerate([
     ("MC", mem_clear), ("MR", mem_recall), ("M+", mem_plus),
@@ -198,17 +176,17 @@ for idx, (label, fn) in enumerate([
 ]):
     if r1[idx].button(label): fn()
 
-# Row 2: trig/log
+# Row 2
 r2 = st.columns(7)
 for idx, token in enumerate(["sin(", "cos(", "tan(", "asin(", "acos(", "atan(", "ln("]):
     if r2[idx].button(token): add(token)
 
-# Row 3: more funcs
+# Row 3
 r3 = st.columns(7)
 for idx, token in enumerate(["log10(", "sqrt(", "(", ")", "^", "!", "%"]):
     if r3[idx].button(token): add(token)
 
-# Row 4-6: digits and ops
+# Row 4-6
 rows = [
     ["7", "8", "9", "÷", "×", "π", "e"],
     ["4", "5", "6", "-", ",", "x", "^2"],
@@ -224,18 +202,16 @@ for row in rows:
             elif key == "^2": add("^2")
             elif key == "±":
                 if st.session_state.display.startswith("-"):
-                    st.session_state.display = st.session_state.display[1:]
+                    sync_display(st.session_state.display[1:])
                 else:
-                    st.session_state.display = "-" + st.session_state.display
+                    sync_display("-" + st.session_state.display)
             elif key == "⌫": backspace()
             else: add(key)
 
-# Equals row
+# Equals
 eq_col1, eq_col2 = st.columns([3, 1])
-with eq_col2:
-    if st.button("="): equals()
-with eq_col1:
-    st.info("Tips: ^ is power, ! is factorial, % is percent, Ans is last result, use x to enable plotting.")
+if eq_col2.button("="): equals()
+eq_col1.info("Tips: ^ is power, ! is factorial, % is percent, Ans is last result, use x to enable plotting.")
 
 # ---------- History ----------
 st.subheader("History")
