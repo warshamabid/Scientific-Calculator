@@ -6,7 +6,7 @@ from sympy import symbols, log
 
 # ---------- Page / Theme ----------
 st.set_page_config(page_title="SciCalc • Streamlit", page_icon="🧮", layout="centered")
-@@ -68,6 +68,9 @@ def asind(z): return sp.asin(z)*180/sp.pi
+ 68,6 +68,9  def asind(z): return sp.asin(z)*180/sp.pi
 def acosd(z): return sp.acos(z)*180/sp.pi
 def atand(z): return sp.atan(z)*180/sp.pi
 
@@ -16,7 +16,7 @@ def log10(z): return log(z, 10)
 def evaluate(expr: str) -> sp.Expr | str:
     """Safely evaluate with SymPy; returns sympy object or string error."""
     if not expr:
-@@ -87,7 +90,7 @@ def evaluate(expr: str) -> sp.Expr | str:
+ 87,7 +90,7  def evaluate(expr: str) -> sp.Expr | str:
         "abs": sp.Abs,
         "ln": sp.log,
         "log": sp.log,     # natural log by default; user can write log10
@@ -25,7 +25,7 @@ def evaluate(expr: str) -> sp.Expr | str:
         "exp": sp.exp,
         "floor": sp.floor,
         "ceil": sp.ceiling,
-@@ -192,14 +195,20 @@ def plot_if_symbolic(sym_val):
+192,14 +195,20  def plot_if_symbolic(sym_val):
         st.session_state.memory = 0.0
     elif button_action == "mem_plus":
         try:
@@ -50,7 +50,7 @@ def evaluate(expr: str) -> sp.Expr | str:
         except Exception:
             st.warning("Cannot M- current expression.")
     elif button_action == "equals":
-@@ -209,6 +218,7 @@ def plot_if_symbolic(sym_val):
+209,6 +218,7  def plot_if_symbolic(sym_val):
         if not isinstance(res, str):
             st.session_state.ans = out
             push_history(expr, out)
